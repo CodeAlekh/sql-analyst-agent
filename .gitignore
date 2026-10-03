@@ -1,0 +1,33 @@
+# Secrets — never commit
+.env
+
+# Data (downloaded by scripts/download_bird.py)
+data/raw/
+data/bird/
+*.sqlite
+*.zip
+
+# Run outputs (large; summaries under results/ are committed deliberately)
+runs/
+cache/
+*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local notes (progress log, plans, failure analysis drafts)
+docs/
+CLAUDE.md

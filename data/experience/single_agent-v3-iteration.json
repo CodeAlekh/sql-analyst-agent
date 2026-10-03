@@ -1,0 +1,74 @@
+[
+ {
+  "question_id": 49,
+  "db_id": "california_schools",
+  "question": "Which different county has the most number of closed schools? Please provide the name of each school as well as the closure date.",
+  "evidence": "Closure date and closed date are synonyms; 'Closed' was mentioned in schools.StatusType.",
+  "wrong_sql": "SELECT School, ClosedDate FROM schools WHERE StatusType = 'Closed' AND County = 'Los Angeles' AND School IS NOT NULL ORDER BY School",
+  "gold_sql": "SELECT DISTINCT County, School, ClosedDate FROM schools WHERE County = ( SELECT County FROM schools WHERE StatusType = 'Closed' GROUP BY County ORDER BY COUNT(School) DESC LIMIT 1 ) AND StatusType = 'Closed' AND school IS NOT NULL",
+  "lesson": "When a question asks \"which [category] has the most [metric],\" use a subquery with GROUP BY and ORDER BY to dynamically identify that category rather than hardcoding a specific value."
+ },
+ {
+  "question_id": 120,
+  "db_id": "financial",
+  "question": "From Year 1995 to 2000, who are the accounts holders from 'east Bohemia'. State the account ID the frequency of statement issuance.",
+  "evidence": "Accounts holder refers to the person who own this account.",
+  "wrong_sql": "SELECT \n  c.client_id,\n  a.account_id,\n  a.frequency\nFROM client c\nJOIN disp d ON c.client_id = d.client_id\nJOIN account a ON d.account_id = a.account_id\nJOIN district dist ON c.district_id = dist.district_id\nWHERE dist.A3 = 'east Bohemia'\n  AND d.type = 'OWNER'\n  AND strftime('%Y', a.date) >= '1995'\n  AND strftime('%Y', a.date) <= '2000'\nORDER BY a.account_id",
+  "gold_sql": "SELECT T1.account_id, T1.frequency FROM account AS T1 INNER JOIN district AS T2 ON T1.district_id = T2.district_id WHERE T2.A3 = 'east Bohemia' AND STRFTIME('%Y', T1.date) BETWEEN '1995' AND '2000'",
+  "lesson": "Always carefully identify which columns are actually requested in the output, and use the most direct path through the schema to retrieve only those columns—avoid joining tables unless their data is explicitly needed in the result."
+ },
+ {
+  "question_id": 159,
+  "db_id": "financial",
+  "question": "List all the withdrawals in cash transactions that the client with the id 3356 makes.",
+  "evidence": "operation = 'VYBER' refers to withdrawal in cash",
+  "wrong_sql": "SELECT t.trans_id, t.account_id, t.date, t.type, t.operation, t.amount, t.balance, t.k_symbol, t.bank, t.account\nFROM trans t\nJOIN disp d ON t.account_id = d.account_id\nWHERE d.client_id = 3356 AND t.operation = 'VYBER'\nORDER BY t.date",
+  "gold_sql": "SELECT T4.trans_id FROM client AS T1 INNER JOIN disp AS T2 ON T1.client_id = T2.client_id INNER JOIN account AS T3 ON T2.account_id = T3.account_id INNER JOIN trans AS T4 ON T3.account_id = T4.account_id WHERE T1.client_id = 3356 AND T4.operation = 'VYBER'",
+  "lesson": "Always verify the complete join path through all necessary tables matches the logical relationships in the schema; skipping intermediate tables can produce incorrect results even when the row count appears correct."
+ },
+ {
+  "question_id": 187,
+  "db_id": "financial",
+  "question": "What are the key statistics for account owners with weekly statement issuance, including how many owners there are, their average number of transactions, how many have credit cards, how many are high-volume clients with over 10,000 in total transactions, the number of districts they're located in, and their average account balance?",
+  "evidence": "Weekly statement issuance refers to frequency = 'POPLATEK TYDNE'; high-volume clients are those with total transaction amount > 10000",
+  "wrong_sql": "WITH weekly_owners AS (\n  SELECT DISTINCT\n    d.client_id,\n    d.account_id,\n    a.district_id\n  FROM disp d\n  JOIN account a ON d.account_id = a.account_id\n  WHERE d.type = 'OWNER'\n    AND a.frequency = 'POPLATEK TYDNE'\n),\ntransaction_stats AS (\n  SELECT\n    account_id,\n    COUNT(*) as trans_count,\n    SUM(amount) as total_amount,\n    AVG(balance) as avg_balance\n  FROM trans\n  GROUP BY account_id\n),\ncard_stats AS (\n  SELECT DISTINCT\n    d.account_id,\n    1 as has_card\n  FROM disp d\n  JOIN card c ON d.disp_id = c.disp_id\n  WHERE d.type = 'OWNER'\n)\nSELECT\n  COUNT(DISTINCT wo.client_id) as num_owners,\n  ROUND(AVG(COALESCE(ts.trans_count, 0)), 2) as avg_transactions,\n  COUNT(DISTINCT CASE WHEN cs.has_card = 1 THEN wo.client_id END) as owners_with_cards,\n  COUNT(DISTINCT CASE WHEN COALESCE(ts.total_amount, 0) > 10000 THEN wo.account_id END) as high_volume_clients,\n  COUNT(DISTINCT wo.district_id) as num_districts,\n  ROUND(AVG(COALESCE(ts.avg_balance, 0)), 2) as avg_account_balance\nFROM weekly_owners wo\nLEFT JOIN transaction_stats ts ON wo.account_id = ts.account_id\nLEFT JOIN card_stats cs ON wo.account_id = cs.account_id",
+  "gold_sql": "WITH ClientTransactionStats AS (\n    SELECT \n        T2.client_id,\n        COUNT(DISTINCT T3.trans_id) AS transaction_count,\n        SUM(T3.amount) AS total_transaction_amount,\n        AVG(T3.balance) AS avg_balance\n    FROM account AS T1\n    JOIN disp AS T2 ON T2.account_id = T1.account_id\n    JOIN trans AS T3 ON T3.account_id = T1.account_id\n    WHERE T1.frequency = 'POPLATEK TYDNE'\n      AND T2.type = 'OWNER'\n    GROUP BY T2.client_id\n),\nClientCards AS (\n    SELECT \n        T2.client_id,\n        COUNT(DISTINCT C.card_id) AS card_count,\n        GROUP_CONCAT(DISTINCT C.type) AS card_types\n    FROM account AS T1\n    JOIN disp AS T2 ON T2.account_id = T1.account_id\n    JOIN disp AS D ON D.client_id = T2.client_id\n    LEFT JOIN card AS C ON C.disp_id = D.disp_id\n    WHERE T1.frequency = 'POPLATEK TYDNE'\n      AND T2.type = 'OWNER'\n    GROUP BY T2.client_id\n)\nSELECT \n    COUNT(DISTINCT CTS.client_id) AS total_weekly_statement_owners,\n    AVG(CTS.transaction_count) AS avg_transactions_per_client,\n    SUM(CASE WHEN CC.card_count > 0 THEN 1 ELSE 0 END) AS clients_with_cards,\n    SUM(CASE WHEN CTS.total_transaction_amount > 10000 THEN 1 ELSE 0 END) AS high_volume_clients,\n    (SELECT COUNT(DISTINCT CL.district_id) \n     FROM client CL\n     JOIN disp D ON D.client_id = CL.client_id\n     JOIN account A ON A.account_id = D.account_id\n     WHERE A.frequency = 'POPLATEK TYDNE' AND D.type = 'OWNER') AS districts_count,\n    ROUND(AVG(CTS.avg_balance), 2) AS average_client_balance\nFROM ClientTransactionStats CTS\nLEFT JOIN ClientCards CC ON CC.client_id = CTS.client_id\nWHERE CTS.transaction_count > 0\n  OR CC.card_count > 0;",
+  "lesson": "When aggregating statistics by a dimension (like district), ensure you're joining through the correct master table (client table) rather than deriving it indirectly from junction tables, as this can lead to incorrect distinct counts due to how the joins multiply rows."
+ },
+ {
+  "question_id": 264,
+  "db_id": "toxicology",
+  "question": "What are the labels for TR000, TR001 and TR002?",
+  "evidence": "TR000, TR001 and TR002 are molecule id; label = '+' mean molecules are carcinogenic; label = '-' means molecules are non-carcinogenic",
+  "wrong_sql": "SELECT label FROM molecule WHERE molecule_id IN ('TR000', 'TR001', 'TR002') ORDER BY molecule_id",
+  "gold_sql": "SELECT molecule_id, T.label FROM molecule AS T WHERE T.molecule_id IN ('TR000', 'TR001', 'TR002')",
+  "lesson": "Always include the identifying column(s) in your SELECT statement when the question asks about specific entities, so the results clearly show which values correspond to which records."
+ },
+ {
+  "question_id": 319,
+  "db_id": "toxicology",
+  "question": "How many elements are contained in bond_id TR001_3_4?",
+  "evidence": "element = 'cl' means Chlorine; element = 'c' means Carbon; element = 'h' means Hydrogen; element = 'o' means Oxygen, element = 's' means Sulfur; element = 'n' means Nitrogen, element = 'p' means Phosphorus, element = 'na' means Sodium, element = 'br' means Bromine, element = 'f' means Fluorine; element = 'i' means Iodine; element = 'sn' means Tin; element = 'pb' means Lead; element = 'te' means Tellurium; element = 'ca' means Calcium",
+  "wrong_sql": "SELECT COUNT(*) FROM atom WHERE atom_id IN (SELECT atom_id FROM connected WHERE bond_id = 'TR001_3_4' UNION SELECT atom_id2 FROM connected WHERE bond_id = 'TR001_3_4')",
+  "gold_sql": "SELECT COUNT(DISTINCT T1.element) FROM atom AS T1 INNER JOIN connected AS T2 ON T1.atom_id = T2.atom_id WHERE T2.bond_id = 'TR001_3_4'",
+  "lesson": "When a question asks \"how many elements,\" clarify whether it's asking for a count of distinct element types or a count of atom instances; use `COUNT(DISTINCT column)` when counting unique categories rather than `COUNT(*)` which counts all rows."
+ },
+ {
+  "question_id": 921,
+  "db_id": "formula_1",
+  "question": "Please give more information about the Formula_1 races that used the Silverstone Circuit.",
+  "evidence": "more information refers to url",
+  "wrong_sql": "SELECT r.url FROM races r WHERE r.circuitId = 9 ORDER BY r.year, r.round",
+  "gold_sql": "SELECT DISTINCT T1.url FROM circuits AS T1 INNER JOIN races AS T2 ON T2.circuitID = T1.circuitId WHERE T1.name = 'Silverstone Circuit'",
+  "lesson": "When a question asks for \"more information\" about entities, carefully determine whether it's asking for information about the primary entity mentioned or a related entity. Use explicit filtering by name rather than hardcoded IDs to ensure accuracy and clarity."
+ },
+ {
+  "question_id": 1529,
+  "db_id": "debit_card_specializing",
+  "question": "What is the amount spent by customer 38508 at the gas stations? How much had the customer spent in January 2012?",
+  "evidence": "",
+  "wrong_sql": "SELECT \n  SUM(Amount * Price) as total_spent,\n  SUM(CASE WHEN strftime('%Y-%m', Date) = '2012-01' THEN Amount * Price ELSE 0 END) as january_2012_spent\nFROM transactions_1k\nWHERE CustomerID = 38508",
+  "gold_sql": "SELECT SUM(Price) AS total_spent,\n       SUM(CASE WHEN strftime('%Y%m', Date) = '201201' THEN Price ELSE 0 END) AS jan_2012_spent\nFROM transactions_1k\nWHERE CustomerID = 38508;",
+  "lesson": "When aggregating transaction amounts, carefully verify which column(s) represent the actual monetary value to sum—do not multiply columns together unless the question explicitly requires it or the schema clearly indicates that's necessary."
+ }
+]
