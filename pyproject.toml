@@ -1,5 +1,5 @@
 [project]
-name = "sql-agent-bird"
+name = "sql-analyst-agent"
 version = "0.1.0"
 description = "An agentic text-to-SQL analyst evaluated on BIRD: one-shot vs single agent vs multi-agent"
 readme = "README.md"

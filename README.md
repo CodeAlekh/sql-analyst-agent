@@ -1,4 +1,4 @@
-# sql-agent-bird
+# sql-analyst-agent
 
 An AI agent that answers questions about databases it has never seen, by writing and testing
 SQL. I built it to answer one question: **does an AI get better at a new database the way a new

@@ -1,1 +1,1 @@
-"""sql-agent-bird: an agentic text-to-SQL analyst evaluated on BIRD."""
+"""sql-analyst-agent: an agentic text-to-SQL analyst evaluated on BIRD."""
